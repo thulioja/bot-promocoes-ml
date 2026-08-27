@@ -725,18 +725,32 @@ def buscar_anuncios(
         termo
     )
 
-    resposta = requisicao_ml(
+    # -----------------------------------------------------
+    # TESTE: busca sem enviar Authorization
+    # -----------------------------------------------------
 
-        "GET",
+    try:
 
-        url,
+        resposta = requests.get(
 
-        params=parametros,
+            url,
 
-        timeout=30
-    )
+            params=parametros,
 
-    if resposta is None:
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "Mozilla/5.0"
+            },
+
+            timeout=30
+        )
+
+    except Exception as erro:
+
+        print(
+            "Erro na busca Mercado Livre:",
+            erro
+        )
 
         return None
 
