@@ -15,7 +15,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🤖 Bot funcionando!\n\n"
         "Use /buscar seguido do produto.\n"
-        "Exemplo: /buscar ar condicionado 12000 btus"
+        "Exemplo:\n"
+        "/buscar ar condicionado 12000 btus"
     )
 
 
@@ -40,14 +41,17 @@ async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             timeout=15
         )
 
-        resposta.raise_for_status()
-        dados = resposta.json()
+        print(f"Mercado Livre - Status: {resposta.status_code}")
+        print(f"Mercado Livre - Resposta: {resposta.text[:1000]}")
 
+        resposta.raise_for_status()
+
+        dados = resposta.json()
         produtos = dados.get("results", [])
 
         if not produtos:
             await update.message.reply_text(
-                f"Não encontrei produtos para: {termo}"
+                f"🔎 Não encontrei produtos para:\n{termo}"
             )
             return
 
@@ -67,13 +71,15 @@ async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(mensagem)
 
     except Exception as erro:
-        print(f"Erro na busca: {erro}")
+        print(f"ERRO NA BUSCA DO MERCADO LIVRE: {erro}")
+
         await update.message.reply_text(
-            "❌ Não consegui consultar o Mercado Livre agora."
+            f"❌ Erro ao consultar o Mercado Livre:\n\n{erro}"
         )
 
 
 class HealthHandler(BaseHTTPRequestHandler):
+
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
@@ -85,23 +91,38 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 def run_server():
     port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+
+    server = HTTPServer(
+        ("0.0.0.0", port),
+        HealthHandler
+    )
+
     server.serve_forever()
 
 
 def main():
+
     if not TOKEN:
         print("ERRO: TELEGRAM_TOKEN não foi configurado.")
         return
 
-    threading.Thread(target=run_server, daemon=True).start()
+    threading.Thread(
+        target=run_server,
+        daemon=True
+    ).start()
 
     app = Application.builder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("buscar", buscar))
+    app.add_handler(
+        CommandHandler("start", start)
+    )
+
+    app.add_handler(
+        CommandHandler("buscar", buscar)
+    )
 
     print("Bot iniciado com sucesso!")
+
     app.run_polling()
 
 
