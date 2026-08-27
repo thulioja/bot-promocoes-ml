@@ -20,18 +20,38 @@ ML_REDIRECT_URI = os.getenv(
     "https://bot-promocoes-ml-ucr3.onrender.com/oauth/callback"
 )
 
+
+# =========================================================
+# PKCE
+# =========================================================
+
 CODE_VERIFIER = secrets.token_urlsafe(64)
 
 CODE_CHALLENGE = base64.urlsafe_b64encode(
-    hashlib.sha256(CODE_VERIFIER.encode()).digest()
+    hashlib.sha256(
+        CODE_VERIFIER.encode()
+    ).digest()
 ).decode().rstrip("=")
 
 STATE = secrets.token_urlsafe(32)
 
+
+# =========================================================
+# ACCESS TOKEN
+# =========================================================
+
 ACCESS_TOKEN = os.getenv("ML_ACCESS_TOKEN")
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# =========================================================
+# START
+# =========================================================
+
+async def start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
     await update.message.reply_text(
         "🤖 Bot funcionando!\n\n"
         "Comandos:\n"
@@ -41,7 +61,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def autorizar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# =========================================================
+# AUTORIZAR MERCADO LIVRE
+# =========================================================
+
+async def autorizar(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     parametros = {
         "response_type": "code",
@@ -58,19 +85,29 @@ async def autorizar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     await update.message.reply_text(
-        "🔐 Conectar ao Mercado Livre:\n\n" + url
+        "🔐 Conectar ao Mercado Livre:\n\n"
+        + url
     )
 
 
-async def testar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# =========================================================
+# TESTAR ACCESS TOKEN
+# =========================================================
+
+async def testar(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     global ACCESS_TOKEN
 
     if not ACCESS_TOKEN:
+
         await update.message.reply_text(
             "⚠️ Não existe Access Token.\n\n"
             "Use /autorizar primeiro."
         )
+
         return
 
     try:
@@ -101,7 +138,7 @@ async def testar(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "✅ Access Token válido!\n\n"
                 f"ID Mercado Livre: {dados.get('id')}\n"
                 f"Usuário: {dados.get('nickname')}\n\n"
-                "O problema está especificamente na busca de produtos."
+                "A autorização está funcionando."
             )
 
         elif resposta.status_code == 401:
@@ -125,103 +162,174 @@ async def testar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as erro:
 
-        print("ERRO NO TESTE:", erro)
+        print(
+            "ERRO NO TESTE:",
+            erro
+        )
 
         await update.message.reply_text(
             f"❌ Erro no teste:\n{erro}"
         )
 
 
-async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# =========================================================
+# BUSCAR PRODUTOS
+# NOVA ESTRATÉGIA: /products/search
+# =========================================================
+
+async def buscar(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     global ACCESS_TOKEN
 
     if not ACCESS_TOKEN:
+
         await update.message.reply_text(
             "⚠️ Mercado Livre não conectado.\n\n"
             "Use /autorizar."
         )
+
         return
 
     if not context.args:
+
         await update.message.reply_text(
             "Digite o produto.\n\n"
             "Exemplo:\n"
             "/buscar ar condicionado 12000 btus"
         )
+
         return
 
     termo = " ".join(context.args)
 
+    await update.message.reply_text(
+        f"🔎 Procurando por:\n{termo}\n\n"
+        "Aguarde..."
+    )
+
     try:
 
         resposta = requests.get(
-            "https://api.mercadolibre.com/sites/MLB/search",
+            "https://api.mercadolibre.com/products/search",
+
             headers={
                 "Authorization": f"Bearer {ACCESS_TOKEN}"
             },
+
             params={
+                "status": "active",
+                "site_id": "MLB",
                 "q": termo,
                 "limit": 5
             },
+
             timeout=15
         )
 
         print(
-            "Mercado Livre - Status:",
+            "Mercado Livre PRODUCTS - Status:",
             resposta.status_code
         )
 
         print(
-            "Mercado Livre - Resposta:",
-            resposta.text[:500]
+            "Mercado Livre PRODUCTS - Resposta:",
+            resposta.text[:1000]
         )
 
         resposta.raise_for_status()
 
         dados = resposta.json()
 
-        produtos = dados.get("results", [])
+        produtos = dados.get(
+            "results",
+            []
+        )
 
         if not produtos:
 
             await update.message.reply_text(
-                f"🔎 Nenhum produto encontrado para:\n{termo}"
+                "🔎 Nenhum produto encontrado.\n\n"
+                f"Pesquisa: {termo}"
             )
+
             return
 
-        mensagem = f"🔎 Resultados para: {termo}\n\n"
+        mensagem = (
+            f"🔎 Resultados para:\n"
+            f"{termo}\n\n"
+        )
 
         for produto in produtos:
 
-            titulo = produto.get("title", "Produto")
-            preco = produto.get("price", 0)
-            link = produto.get("permalink", "")
+            titulo = produto.get(
+                "name",
+                produto.get(
+                    "title",
+                    "Produto"
+                )
+            )
+
+            produto_id = produto.get(
+                "id",
+                ""
+            )
 
             mensagem += (
                 f"🛒 {titulo}\n"
-                f"💰 R$ {preco:.2f}\n"
-                f"🔗 {link}\n\n"
+                f"🆔 {produto_id}\n\n"
             )
 
-        await update.message.reply_text(mensagem)
+        await update.message.reply_text(
+            mensagem
+        )
+
+    except requests.HTTPError as erro:
+
+        print(
+            "ERRO HTTP NA BUSCA:",
+            erro
+        )
+
+        await update.message.reply_text(
+            "❌ Mercado Livre recusou a busca.\n\n"
+            f"Status HTTP: {resposta.status_code}"
+        )
 
     except Exception as erro:
 
-        print("ERRO NA BUSCA:", erro)
+        print(
+            "ERRO NA BUSCA:",
+            erro
+        )
 
         await update.message.reply_text(
-            f"❌ Erro ao consultar o Mercado Livre:\n\n{erro}"
+            f"❌ Erro ao consultar o Mercado Livre:\n\n"
+            f"{erro}"
         )
 
 
-class HealthHandler(BaseHTTPRequestHandler):
+# =========================================================
+# SERVIDOR / CALLBACK OAUTH
+# =========================================================
+
+class HealthHandler(
+    BaseHTTPRequestHandler
+):
 
     def do_GET(self):
 
         global ACCESS_TOKEN
 
-        caminho = urlparse(self.path)
+        caminho = urlparse(
+            self.path
+        )
+
+        # -------------------------------------------------
+        # HEALTH CHECK
+        # -------------------------------------------------
 
         if caminho.path == "/":
 
@@ -234,12 +342,25 @@ class HealthHandler(BaseHTTPRequestHandler):
 
             return
 
+        # -------------------------------------------------
+        # OAUTH CALLBACK
+        # -------------------------------------------------
+
         if caminho.path == "/oauth/callback":
 
-            parametros = parse_qs(caminho.query)
+            parametros = parse_qs(
+                caminho.query
+            )
 
-            code = parametros.get("code", [None])[0]
-            state = parametros.get("state", [None])[0]
+            code = parametros.get(
+                "code",
+                [None]
+            )[0]
+
+            state = parametros.get(
+                "state",
+                [None]
+            )[0]
 
             if not code:
 
@@ -267,25 +388,46 @@ class HealthHandler(BaseHTTPRequestHandler):
 
                 resposta = requests.post(
                     "https://api.mercadolibre.com/oauth/token",
+
                     data={
-                        "grant_type": "authorization_code",
-                        "client_id": ML_CLIENT_ID,
-                        "client_secret": ML_CLIENT_SECRET,
-                        "code": code,
-                        "redirect_uri": ML_REDIRECT_URI,
-                        "code_verifier": CODE_VERIFIER
+                        "grant_type":
+                            "authorization_code",
+
+                        "client_id":
+                            ML_CLIENT_ID,
+
+                        "client_secret":
+                            ML_CLIENT_SECRET,
+
+                        "code":
+                            code,
+
+                        "redirect_uri":
+                            ML_REDIRECT_URI,
+
+                        "code_verifier":
+                            CODE_VERIFIER
                     },
+
                     headers={
-                        "accept": "application/json",
+                        "accept":
+                            "application/json",
+
                         "content-type":
-                        "application/x-www-form-urlencoded"
+                            "application/x-www-form-urlencoded"
                     },
+
                     timeout=15
                 )
 
                 print(
                     "OAuth Mercado Livre:",
                     resposta.status_code
+                )
+
+                print(
+                    "OAuth resposta:",
+                    resposta.text[:500]
                 )
 
                 if resposta.status_code != 200:
@@ -301,7 +443,9 @@ class HealthHandler(BaseHTTPRequestHandler):
 
                 dados = resposta.json()
 
-                ACCESS_TOKEN = dados.get("access_token")
+                ACCESS_TOKEN = dados.get(
+                    "access_token"
+                )
 
                 if not ACCESS_TOKEN:
 
@@ -331,7 +475,10 @@ class HealthHandler(BaseHTTPRequestHandler):
 
             except Exception as erro:
 
-                print("ERRO NO OAUTH:", erro)
+                print(
+                    "ERRO NO OAUTH:",
+                    erro
+                )
 
                 self.send_response(500)
                 self.end_headers()
@@ -345,36 +492,67 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.send_response(404)
         self.end_headers()
 
-    def log_message(self, format, *args):
+    def log_message(
+        self,
+        format,
+        *args
+    ):
+
         pass
 
+
+# =========================================================
+# SERVIDOR HTTP
+# =========================================================
 
 def run_server():
 
     port = int(
-        os.environ.get("PORT", 10000)
+        os.environ.get(
+            "PORT",
+            10000
+        )
     )
 
     server = HTTPServer(
-        ("0.0.0.0", port),
+        (
+            "0.0.0.0",
+            port
+        ),
         HealthHandler
     )
 
     server.serve_forever()
 
 
+# =========================================================
+# MAIN
+# =========================================================
+
 def main():
 
     if not TOKEN:
-        print("ERRO: TELEGRAM_TOKEN não foi configurado.")
+
+        print(
+            "ERRO: TELEGRAM_TOKEN não foi configurado."
+        )
+
         return
 
     if not ML_CLIENT_ID:
-        print("ERRO: ML_CLIENT_ID não foi configurado.")
+
+        print(
+            "ERRO: ML_CLIENT_ID não foi configurado."
+        )
+
         return
 
     if not ML_CLIENT_SECRET:
-        print("ERRO: ML_CLIENT_SECRET não foi configurado.")
+
+        print(
+            "ERRO: ML_CLIENT_SECRET não foi configurado."
+        )
+
         return
 
     threading.Thread(
@@ -382,28 +560,52 @@ def main():
         daemon=True
     ).start()
 
-    app = Application.builder().token(TOKEN).build()
-
-    app.add_handler(
-        CommandHandler("start", start)
+    app = (
+        Application
+        .builder()
+        .token(TOKEN)
+        .build()
     )
 
     app.add_handler(
-        CommandHandler("autorizar", autorizar)
+        CommandHandler(
+            "start",
+            start
+        )
     )
 
     app.add_handler(
-        CommandHandler("testar", testar)
+        CommandHandler(
+            "autorizar",
+            autorizar
+        )
     )
 
     app.add_handler(
-        CommandHandler("buscar", buscar)
+        CommandHandler(
+            "testar",
+            testar
+        )
     )
 
-    print("Bot iniciado com sucesso!")
+    app.add_handler(
+        CommandHandler(
+            "buscar",
+            buscar
+        )
+    )
+
+    print(
+        "Bot iniciado com sucesso!"
+    )
 
     app.run_polling()
 
 
+# =========================================================
+# EXECUÇÃO
+# =========================================================
+
 if __name__ == "__main__":
+
     main()
